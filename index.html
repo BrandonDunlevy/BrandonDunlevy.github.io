@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SUS Data Processing Wizard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Bootstrap CSS -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<!-- Papa Parse -->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+  body {
+    background: linear-gradient(135deg, #f0f4f8 0%, #ffffff 100%);
+    font-family: 'Inter', sans-serif;
+    color: #333;
+  }
+
+  .hero {
+    text-align: center;
+    padding: 60px 20px;
+    margin-bottom: 40px;
+  }
+
+  .hero h1 {
+    font-size: 2.8rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: #2c3e50;
+  }
+
+  .hero p {
+    font-size: 1.15rem;
+    color: #6c757d;
+  }
+
+  /* Wizard Nav */
+  .wizard-nav {
+    display: flex;
+    justify-content: center;
+    list-style: none;
+    padding: 0;
+    margin-bottom: 40px;
+  }
+
+  .wizard-nav .nav-item {
+    margin: 0 10px;
+    text-align: center;
+    position: relative;
+  }
+
+  .wizard-nav .nav-item::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: -20px;
+    width: 40px;
+    height: 2px;
+    background: #dee2e6;
+    transform: translateY(-50%);
+  }
+
+  .wizard-nav .nav-item:last-child::after {
+    display: none;
+  }
+
+  .wizard-nav .nav-link {
+    border: none;
+    background: none;
+    font-weight: 600;
+    color: #6c757d;
+    font-size: 0.95rem;
+    cursor: pointer;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    text-decoration: none;
+  }
+
+  .wizard-nav .nav-link .step-number {
+    display: inline-block;
+    background: #dee2e6;
+    color: #333;
+    width: 32px;
+    height: 32px;
+    line-height: 32px;
+    text-align: center;
+    border-radius: 50%;
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-bottom: 5px;
+  }
+
+  .wizard-nav .nav-link.active .step-number {
+    background: #0d6efd;
+    color: #fff;
+  }
+
+  .wizard-nav .nav-link:not(.disabled):hover .step-number {
+    background: #0d6efd;
+    color: #fff;
+  }
+
+  .wizard-nav .nav-link.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* Steps */
+  .wizard-step {
+    display: none;
+    transition: opacity 0.3s ease;
+  }
+  .wizard-step.active {
+    display: block;
+  }
+
+  .card {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+  }
+
+  /* Upload Areas */
+  .upload-area {
+    border: 2px dashed #ced4da;
+    border-radius: 8px;
+    text-align: center;
+    padding: 40px;
+    color: #6c757d;
+    margin-bottom: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    background: #fff;
+  }
+  .upload-area.dragover {
+    border-color: #0d6efd;
+    background-color: #f0f8ff;
+    color: #0d6efd;
+  }
+
+  #finalResults {
+    display: none;
+    opacity: 0;
+    transition: opacity 0.8s ease-in-out;
+  }
+  #finalResults.show {
+    display: block;
+    opacity: 1;
+  }
+
+  .big-number {
+    font-size: 1.5rem;
+    font-weight: bold;
+    opacity: 0;
+    transition: opacity 0.5s ease-in-out;
+    color: #2c3e50;
+  }
+
+  /* Toast positioning */
+  #toastContainer {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+  }
+
+  .file-list {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin-bottom: 20px;
+  }
+
+  /* Loading overlays */
+  .loading-overlay {
+    position: absolute;
+    top:0; left:0; right:0; bottom:0;
+    background: rgba(255,255,255,0.95);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    z-index:999;
+    text-align: center;
+    padding: 20px;
+  }
+  .loading-overlay h5 {
+    margin-bottom: 15px;
+    font-weight: 600;
+    color: #2c3e50;
+  }
+  .progress {
+    width: 75%;
+    margin: 10px auto;
+  }
+
+  .list-unstyled li {
+    margin-bottom: 5px;
+  }
+
+  .btn {
+    border-radius: 8px;
+    font-weight: 500;
+  }
+
+  .toast-body {
+    font-weight: 500;
+  }
+
+  #chartContainer {
+    margin-top: 30px;
+  }
+
+  #additionalInsights {
+    margin-top: 30px;
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>SUS Data Processing Wizard</h1>
+  <p>Follow the steps to upload Visitor IDs, then question responses, and finally generate the SUS score and combined data file.</p>
+</div>
+
+<div class="container">
+
+  <!-- Wizard Nav -->
+  <ul class="nav wizard-nav" id="wizardTabs">
+    <li class="nav-item">
+      <button class="nav-link active" data-step="1">
+        <span class="step-number">1</span>
+        Visitor IDs
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link disabled" data-step="2">
+        <span class="step-number">2</span>
+        Questions
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link disabled" data-step="3">
+        <span class="step-number">3</span>
+        Results
+      </button>
+    </li>
+  </ul>
+
+  <!-- Alerts -->
+  <div id="alertContainer" style="display:none;"></div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" aria-live="polite" aria-atomic="true">
+    <div class="toast align-items-center text-bg-success" role="alert" aria-live="assertive" aria-atomic="true" style="display:none;">
+      <div class="d-flex">
+        <div class="toast-body" id="toastMessage"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="wizard-step active" id="step1">
+    <div class="card p-4 mb-4 position-relative">
+      <h2 class="h4 mb-3">Upload Visitor IDs</h2>
+      <p class="text-secondary">Upload a CSV file with columns: <code>Visitor ID, Clicks</code>. We will extract only the Visitor IDs.</p>
+      <div class="upload-area" id="visitorDropArea">
+        <strong>Drag & Drop or Click</strong> to Upload Visitor CSV
+        <input type="file" id="visitorFile" accept=".csv" style="display:none;">
+      </div>
+      <div class="file-list" id="visitorFileList" style="display:none;"></div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-primary" id="processVisitorFile">Process Visitor File</button>
+        <button class="btn btn-success" id="goToStep2" disabled>Next Step</button>
+      </div>
+
+      <div id="visitorList" class="card p-4 mt-4" style="display:none;">
+        <h3 class="h5">Visitor IDs Loaded</h3>
+        <ul id="visitorUl" class="list-unstyled mb-0"></ul>
+      </div>
+
+      <!-- Loading overlay for Step 1 -->
+      <div class="loading-overlay" id="visitorLoadingOverlay" style="display:none;">
+        <div class="spinner-border text-primary mb-3" role="status"><span class="visually-hidden">Loading...</span></div>
+        <h5>Processing Visitor File...</h5>
+        <div class="progress">
+          <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" 
+               style="width: 0%;" id="visitorProgressBar"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="wizard-step" id="step2">
+    <div class="card p-4 mb-4 position-relative">
+      <h2 class="h4 mb-3">Upload 10 Question Files</h2>
+      <p class="text-secondary">Upload 10 CSV files (Q1 to Q10) with columns: <code>Visitor ID, Date, Response</code>.</p>
+      <div class="upload-area" id="questionDropArea">
+        <strong>Drag & Drop or Click</strong> to Upload Question CSVs
+        <input type="file" id="questionFiles" accept=".csv" multiple style="display:none;">
+      </div>
+      <div class="file-list" id="questionFileList" style="display:none;"></div>
+      <button class="btn btn-primary" id="processQuestions">Process Question Files</button>
+
+      <!-- Loading overlay for Step 2 -->
+      <div class="loading-overlay" id="questionLoadingOverlay" style="display:none;">
+        <div class="spinner-border text-primary mb-3" role="status"><span class="visually-hidden">Loading...</span></div>
+        <h5>Processing Question Files...</h5>
+        <div class="progress">
+          <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" 
+               style="width: 0%;" id="questionProgressBar"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="wizard-step" id="step3">
+    <div class="card p-4 mb-4 position-relative">
+      <h2 class="h4 mb-3">Review & Download</h2>
+      <p class="text-secondary">Your final combined data is ready. Click below to generate the SUS score and combined CSV file.</p>
+      <button class="btn btn-primary mb-3" id="generateCSV">Generate SUS Score</button>
+      <a id="downloadLink" href="#" download="combined_data.csv" style="display:none;" class="btn btn-success mb-3">Download Combined CSV</a>
+
+      <div id="finalResults" class="card p-4 mt-4">
+        <h3 class="h5 mb-3">SUS Results</h3>
+        <p class="mb-2">Mean SUS Score: <span class="text-primary big-number" id="meanSusScore"></span></p>
+        <p class="mb-2">Confidence Level %: <span class="text-success big-number" id="confidenceRating"></span></p>
+        <p class="mb-0">Confidence Interval: <span class="text-info big-number" id="susConfidenceInterval"></span></p>
+
+        <div id="chartContainer">
+          <canvas id="responsesChart"></canvas>
+        </div>
+
+        <!-- Additional Insights -->
+        <div id="additionalInsights" style="display:none;">
+          <h4 class="h6 mt-4">Additional Insights</h4>
+          <p><strong>Adjective Rating:</strong> <span id="adjectiveRating"></span></p>
+          <p><strong>Letter Grade:</strong> <span id="letterGrade"></span></p>
+          <p><strong>Approx. Percentile Rank:</strong> <span id="percentileRank"></span></p>
+          <div class="mt-3">
+            <canvas id="susScaleChart" height="80"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loading overlay for Step 3 -->
+      <div class="loading-overlay" id="finalLoadingOverlay" style="display:none;">
+        <div class="spinner-border text-primary mb-3" role="status"><span class="visually-hidden">Loading...</span></div>
+        <h5>Generating SUS Score...</h5>
+        <div class="progress">
+          <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" 
+               style="width: 0%;" id="finalProgressBar"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const confidenceLevel = 0.95; 
+
+let visitorIDs = [];
+let responses = {}; // responses[visitorID] = [Q1,...,Q10]
+
+// Step navigation
+function setActiveStep(stepNum) {
+  document.querySelectorAll('.wizard-step').forEach(el => el.classList.remove('active'));
+  document.getElementById('step'+stepNum).classList.add('active');
+
+  document.querySelectorAll('#wizardTabs button').forEach(btn => {
+    const s = parseInt(btn.getAttribute('data-step'));
+    if (s === stepNum) {
+      btn.classList.remove('disabled');
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+      if (s < stepNum) btn.classList.remove('disabled');
+    }
+  });
+}
+
+function showAlert(message, type="danger") {
+  const alertContainer = document.getElementById('alertContainer');
+  alertContainer.innerHTML = `<div class="alert alert-${type}" role="alert">${message}</div>`;
+  alertContainer.style.display = 'block';
+  setTimeout(() => {
+    hideAlert();
+  }, 4000);
+}
+function hideAlert() {
+  const alertContainer = document.getElementById('alertContainer');
+  alertContainer.style.display = 'none';
+}
+
+function showToast(message) {
+  const toastEl = document.querySelector('#toastContainer .toast');
+  const toastMessageEl = document.getElementById('toastMessage');
+  toastMessageEl.textContent = message;
+  toastEl.style.display = 'block';
+  const toast = new bootstrap.Toast(toastEl);
+  toast.show();
+}
+
+// Simulate a fictitious progress bar going from 0% to 100% over 1s, then call callback
+function simulateProgress(overlayId, progressBarId, callback) {
+  const overlay = document.getElementById(overlayId);
+  const pb = document.getElementById(progressBarId);
+
+  overlay.style.display = 'flex';
+  let progress = 0;
+  const interval = setInterval(() => {
+    progress += 10;
+    pb.style.width = progress + '%';
+    if (progress >= 100) {
+      clearInterval(interval);
+      setTimeout(() => {
+        callback();
+      }, 200);
+    }
+  }, 100);
+}
+
+function hideOverlay(overlayId) {
+  const overlay = document.getElementById(overlayId);
+  overlay.style.display = 'none';
+}
+
+// File selection display
+function showSelectedFiles(input, listContainer) {
+  const files = Array.from(input.files);
+  if (files.length > 0) {
+    const names = files.map(f => f.name).join(', ');
+    listContainer.textContent = "Selected Files: " + names;
+    listContainer.style.display = 'block';
+  } else {
+    listContainer.style.display = 'none';
+  }
+}
+
+// Step 1 Logic
+const visitorFileInput = document.getElementById('visitorFile');
+const visitorDropArea = document.getElementById('visitorDropArea');
+const visitorFileList = document.getElementById('visitorFileList');
+
+visitorDropArea.addEventListener('click', () => visitorFileInput.click());
+visitorDropArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  visitorDropArea.classList.add('dragover');
+});
+visitorDropArea.addEventListener('dragleave', () => {
+  visitorDropArea.classList.remove('dragover');
+});
+visitorDropArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  visitorDropArea.classList.remove('dragover');
+  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    visitorFileInput.files = e.dataTransfer.files;
+    showSelectedFiles(visitorFileInput, visitorFileList);
+  }
+});
+visitorFileInput.addEventListener('change', () => {
+  showSelectedFiles(visitorFileInput, visitorFileList);
+});
+
+document.getElementById('processVisitorFile').addEventListener('click', () => {
+  const file = visitorFileInput.files[0];
+  if (!file) {
+    showAlert("Please upload the Visitor ID file.", "warning");
+    return;
+  }
+
+  simulateProgress('visitorLoadingOverlay', 'visitorProgressBar', () => {
+    Papa.parse(file, {
+      header: true,
+      complete: function(results) {
+        hideOverlay('visitorLoadingOverlay');
+        hideAlert();
+        const data = results.data;
+        visitorIDs = [];
+        for (let row of data) {
+          if (row["Visitor ID"]) {
+            const vid = row["Visitor ID"].trim();
+            if (vid) visitorIDs.push(vid);
+          }
+        }
+
+        if (visitorIDs.length === 0) {
+          showAlert("No valid Visitor IDs found.", "warning");
+          return;
+        }
+
+        visitorIDs.forEach(id => { responses[id] = Array(10).fill(''); });
+
+        const visitorUl = document.getElementById('visitorUl');
+        visitorUl.innerHTML = '';
+        visitorIDs.forEach(id => {
+          const li = document.createElement('li');
+          li.textContent = id;
+          visitorUl.appendChild(li);
+        });
+
+        document.getElementById('visitorList').style.display = 'block';
+        // Enable Next Step
+        document.getElementById('goToStep2').disabled = false;
+      },
+      error: function(err) {
+        hideOverlay('visitorLoadingOverlay');
+        console.error(err);
+        showAlert("Error parsing visitor file.", "danger");
+      }
+    });
+  });
+});
+
+document.getElementById('goToStep2').addEventListener('click', () => setActiveStep(2));
+
+// Step 2 Logic
+const questionFilesInput = document.getElementById('questionFiles');
+const questionDropArea = document.getElementById('questionDropArea');
+const questionFileList = document.getElementById('questionFileList');
+
+questionDropArea.addEventListener('click', () => questionFilesInput.click());
+questionDropArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  questionDropArea.classList.add('dragover');
+});
+questionDropArea.addEventListener('dragleave', () => {
+  questionDropArea.classList.remove('dragover');
+});
+questionDropArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  questionDropArea.classList.remove('dragover');
+  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    questionFilesInput.files = e.dataTransfer.files;
+    showSelectedFiles(questionFilesInput, questionFileList);
+  }
+});
+questionFilesInput.addEventListener('change', () => {
+  showSelectedFiles(questionFilesInput, questionFileList);
+});
+
+document.getElementById('processQuestions').addEventListener('click', () => {
+  let files = Array.from(questionFilesInput.files);
+  if (files.length !== 10) {
+    showAlert("Please upload exactly 10 question files for Q1-Q10.", "warning");
+    return;
+  }
+  hideAlert();
+
+  // Extract question number from filenames (e.g. Q_1, Q-1, Q1) using regex
+  files = files.map(file => {
+    const name = file.name;
+    const match = name.match(/Q[\_\-]?(\d+)/i);
+    let questionNum = null;
+    if (match && match[1]) {
+      questionNum = parseInt(match[1], 10);
+    }
+    return { file, questionNum: questionNum || 999 };
+  });
+
+  // Sort by question number
+  files.sort((a, b) => a.questionNum - b.questionNum);
+
+  simulateProgress('questionLoadingOverlay', 'questionProgressBar', () => {
+    let filesProcessed = 0;
+    files.forEach((item) => {
+      const { file, questionNum } = item;
+      Papa.parse(file, {
+        header: true,
+        complete: function(results) {
+          const data = results.data;
+          const qIndex = questionNum - 1; // Q_1 is index 0, Q_2 is index 1, etc.
+          for (let row of data) {
+            const vid = row["Visitor ID"] ? row["Visitor ID"].trim() : '';
+            const resp = row["Response"] ? row["Response"].trim() : '';
+            if (vid && resp && responses[vid] && qIndex >= 0 && qIndex < 10) {
+              responses[vid][qIndex] = resp;
+            }
+          }
+          filesProcessed++;
+          if (filesProcessed === 10) {
+            hideOverlay('questionLoadingOverlay');
+            showToast("Question responses loaded");
+            setTimeout(() => setActiveStep(3), 1500);
+          }
+        },
+        error: function(err) {
+          hideOverlay('questionLoadingOverlay');
+          console.error(err);
+          showAlert("Error parsing " + file.name, "danger");
+        }
+      });
+    });
+  });
+});
+
+// Step 3 Logic
+document.getElementById('generateCSV').addEventListener('click', () => {
+  simulateProgress('finalLoadingOverlay', 'finalProgressBar', () => {
+    const header = ["Visitor ID","Q1","Q2","Q3","Q4","Q5","Q6","Q7","Q8","Q9","Q10"];
+    const rows = [header];
+    for (let vid of visitorIDs) {
+      rows.push([vid, ...responses[vid]]);
+    }
+
+    const susScores = [];
+    const questionCount = 10;
+    let questionSums = Array(questionCount).fill(0);
+    let questionValidCounts = Array(questionCount).fill(0);
+
+    for (let vid of visitorIDs) {
+      const qs = responses[vid].map(Number);
+      if (qs.every(x => !isNaN(x))) {
+        susScores.push(computeSUS(qs));
+      }
+      qs.forEach((val,i)=>{
+        if(!isNaN(val) && val !== "") {
+          questionSums[i] += val;
+          questionValidCounts[i]++;
+        }
+      });
+    }
+
+    // Compute question averages
+    let questionAverages = questionSums.map((sum,i) => questionValidCounts[i] > 0 ? sum/questionValidCounts[i] : 0);
+
+    const indexedRows = [["",...header]];
+    rows.slice(1).forEach((r, i) => indexedRows.push([i, ...r]));
+
+    const csvString = Papa.unparse(indexedRows);
+    const blob = new Blob([csvString], {type: 'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const dlLink = document.getElementById('downloadLink');
+    dlLink.href = url;
+    dlLink.style.display = 'inline-block';
+
+    if (susScores.length > 0) {
+      const m = mean(susScores);
+      const [lower, upper] = confidenceIntervalZ(susScores, confidenceLevel);
+      const meanEl = document.getElementById('meanSusScore');
+      const ciEl = document.getElementById('susConfidenceInterval');
+      const ratingEl = document.getElementById('confidenceRating');
+
+      meanEl.textContent = "";
+      ciEl.textContent = "";
+      ratingEl.textContent = "";
+
+      document.getElementById('finalResults').classList.add('show');
+
+      setTimeout(() => { meanEl.style.opacity = 1; animateNumber(meanEl, m, 1200); }, 200);
+      setTimeout(() => { ratingEl.style.opacity = 1; animateNumber(ratingEl, confidenceLevel*100, 1000, '%'); }, 600);
+      setTimeout(() => { ciEl.style.opacity = 1; animateInterval(ciEl, lower, upper, 1200); }, 1000);
+
+      // Create the chart of question averages
+      createChart(questionAverages);
+
+      // Show additional insights
+      const adjective = getSUSAdjective(m);
+      const letter = getSUSLetterGrade(m);
+      const percentile = getSUSPercentile(m);
+
+      document.getElementById('adjectiveRating').textContent = adjective;
+      document.getElementById('letterGrade').textContent = letter;
+      document.getElementById('percentileRank').textContent = percentile;
+
+      document.getElementById('additionalInsights').style.display = 'block';
+      createSUSScaleChart(m);
+    }
+
+    hideOverlay('finalLoadingOverlay');
+  });
+});
+
+// Helper Functions for Additional Insights
+function getSUSAdjective(score) {
+  // Based on https://measuringu.com/sus/ and related literature
+  if (score >= 85) return "Excellent";
+  else if (score >= 80) return "Good";
+  else if (score >= 68) return "OK";
+  else if (score >= 50) return "Poor";
+  return "Worst Imaginable";
+}
+
+function getSUSLetterGrade(score) {
+  // Commonly used grading scale for SUS
+  if (score >= 80.3) return "A";
+  else if (score >= 74) return "B";
+  else if (score >= 68) return "C";
+  else if (score >= 51) return "D";
+  return "F";
+}
+
+function getSUSPercentile(score) {
+  // Approximation: 68 ~50th percentile, 80.3 ~80th percentile
+  // We'll do a rough linear interpolation for demonstration.
+  if (score < 50) return "~20th Percentile";
+  if (score === 68) return "50th Percentile";
+  if (score === 80.3) return "80th Percentile";
+  if (score > 90) return "~95th Percentile";
+
+  // Approximate linear interpolation between these known points
+  // between 50 and 68: from 20th to 50th
+  // between 68 and 80.3: from 50th to 80th
+  // between 80.3 and 90: from 80th to 95th
+  if (score < 68) {
+    let pct = 20 + ( (score-50)/(18) * 30 );
+    return pct.toFixed(0) + "th Percentile";
+  } else if (score < 80.3) {
+    let pct = 50 + ((score-68)/12.3)*30;
+    return pct.toFixed(0) + "th Percentile";
+  } else {
+    let pct = 80 + ((score-80.3)/9.7)*15;
+    return pct.toFixed(0) + "th Percentile";
+  }
+}
+
+// Animations
+function animateNumber(element, targetValue, duration = 1000, suffix = '') {
+  let startTime = null;
+  const initial = 0;
+  const isFloat = (targetValue % 1 !== 0);
+
+  function step(timestamp) {
+    if (!startTime) startTime = timestamp;
+    const elapsed = timestamp - startTime;
+    const progress = Math.min(elapsed/duration, 1);
+    const current = initial + (targetValue - initial)*progress;
+    element.textContent = isFloat ? current.toFixed(2) + suffix : Math.round(current) + suffix;
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function animateInterval(element, lower, upper, duration = 1000) {
+  let startTime = null;
+  const initialLower = 0;
+  const initialUpper = 0;
+  function step(timestamp) {
+    if (!startTime) startTime = timestamp;
+    const elapsed = timestamp - startTime;
+    const progress = Math.min(elapsed/duration,1);
+
+    const currentLower = initialLower + (lower-initialLower)*progress;
+    const currentUpper = initialUpper + (upper-initialUpper)*progress;
+    element.textContent = `(${currentLower.toFixed(2)}, ${currentUpper.toFixed(2)})`;
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// Chart creation for Question Averages
+function createChart(averages) {
+  const ctx = document.getElementById('responsesChart').getContext('2d');
+  const labels = ["Q1","Q2","Q3","Q4","Q5","Q6","Q7","Q8","Q9","Q10"];
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Average Response',
+        data: averages,
+        backgroundColor: '#0d6efd',
+        borderRadius: 5
+      }]
+    },
+    options: {
+      animation: {
+        duration: 1000
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Average Score'
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          display: false
+        }
+      }
+    }
+  });
+}
+
+// Chart for SUS Scale Visualization
+function createSUSScaleChart(score) {
+  const ctx = document.getElementById('susScaleChart').getContext('2d');
+  
+  // We'll show a horizontal bar from 0 to 100 with a single data point
+  // The bar background can be segmented by using multiple datasets or just a gradient
+  // For simplicity, let's use a gradient and a single point
+  const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
+  // We can use color stops to show segments that represent different adjective ratings
+  gradient.addColorStop(0, '#e74c3c');   // Worst end (red)
+  gradient.addColorStop(0.5, '#f1c40f'); // Middle (yellow)
+  gradient.addColorStop(0.8, '#2ecc71'); // Good (green)
+  gradient.addColorStop(1, '#27ae60');   // Excellent (darker green)
+  
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['SUS Score'],
+      datasets: [{
+        data: [score],
+        backgroundColor: gradient,
+        borderRadius: 5,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      scales: {
+        x: {
+          beginAtZero: true,
+          max: 100
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: false
+        }
+      }
+    }
+  });
+}
+
+// SUS Calculation
+function computeSUS(responses) {
+  const odd = [0,2,4,6,8];  
+  const even = [1,3,5,7,9]; 
+  let total = 0;
+  odd.forEach(i => { total += (responses[i]-1); });
+  even.forEach(i => { total += (5 - responses[i]); });
+  return total * 2.5;
+}
+
+function mean(arr) {
+  return arr.reduce((a,b)=>a+b,0)/arr.length;
+}
+
+function standardDeviation(arr) {
+  const m = mean(arr);
+  const variance = arr.reduce((acc,val)=>acc+(val-m)**2,0)/(arr.length-1);
+  return Math.sqrt(variance);
+}
+
+function confidenceIntervalZ(arr, confidence=0.95) {
+  const m = mean(arr);
+  const sd = standardDeviation(arr);
+  const n = arr.length;
+  const sem = sd / Math.sqrt(n);
+  let z = 1.96;
+  if (confidence===0.90) z=1.645;
+  else if (confidence===0.99) z=2.576;
+  const margin = z*sem;
+  return [m-margin, m+margin];
+}
+
+// Wizard nav
+document.querySelectorAll('#wizardTabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const step = parseInt(btn.getAttribute('data-step'));
+    if (!btn.classList.contains('disabled')) {
+      setActiveStep(step);
+    }
+  });
+});
+</script>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
